@@ -1,399 +1,382 @@
-$(function(){
+$(function() {
 
-	var filemanager = $('.filemanager'),
-		breadcrumbs = $('.breadcrumbs'),
-		fileList = filemanager.find('.data');
+    var filemanager = $('.filemanager'),
+        breadcrumbs = $('.breadcrumbs'),
+        fileList = filemanager.find('.data');
 
-	// Start by fetching the file data from scan.php with an AJAX request
+    // Start by fetching the file data from scan.php with an AJAX request
+    $.get('scan.php', function(data) {
 
-	$.get('scan.php', function(data) {
+        var response = [data],
+            currentPath = '',
+            breadcrumbsUrls = [];
 
-		var response = [data],
-			currentPath = '',
-			breadcrumbsUrls = [];
+        var folders = [],
+            files = [];
 
-		var folders = [],
-			files = [];
+        // This event listener monitors changes on the URL. We use it to
+        // capture back/forward navigation in the browser.
+        $(window).on('hashchange', function() {
 
-		// This event listener monitors changes on the URL. We use it to
-		// capture back/forward navigation in the browser.
+            goto(window.location.hash);
+            // We are triggering the event. This will execute 
+            // this function on page load, so that we show the correct folder:
+        }).trigger('hashchange');
 
-		$(window).on('hashchange', function(){
 
-			goto(window.location.hash);
+        // Hiding and showing the search box
+        filemanager.find('.search').click(function() {
 
-			// We are triggering the event. This will execute 
-			// this function on page load, so that we show the correct folder:
+            var search = $(this);
 
-		}).trigger('hashchange');
+            search.find('span').hide();
+            search.find('input[type=search]').show().focus();
 
+        });
 
-		// Hiding and showing the search box
 
-		filemanager.find('.search').click(function(){
+        // Listening for keyboard input on the search field.
+        // We are using the "input" event which detects cut and paste
+        // in addition to keyboard input.
+        filemanager.find('input').on('input', function(e) {
 
-			var search = $(this);
+            folders = [];
+            files = [];
 
-			search.find('span').hide();
-			search.find('input[type=search]').show().focus();
+            var value = this.value.trim();
 
-		});
+            if (value.length) {
 
+                filemanager.addClass('searching');
 
-		// Listening for keyboard input on the search field.
-		// We are using the "input" event which detects cut and paste
-		// in addition to keyboard input.
+                // Update the hash on every key stroke
+                window.location.hash = 'search=' + value.trim();
 
-		filemanager.find('input').on('input', function(e){
+            } else {
 
-			folders = [];
-			files = [];
+                filemanager.removeClass('searching');
+                window.location.hash = encodeURIComponent(currentPath);
 
-			var value = this.value.trim();
+            }
 
-			if(value.length) {
+        }).on('keyup', function(e) {
 
-				filemanager.addClass('searching');
+            // Clicking 'ESC' button triggers focusout and cancels the search
 
-				// Update the hash on every key stroke
-				window.location.hash = 'search=' + value.trim();
+            var search = $(this);
 
-			}
+            if (e.keyCode == 27) {
 
-			else {
+                search.trigger('focusout');
 
-				filemanager.removeClass('searching');
-				window.location.hash = encodeURIComponent(currentPath);
+            }
 
-			}
+        }).focusout(function(e) {
 
-		}).on('keyup', function(e){
+            // Cancel the search
 
-			// Clicking 'ESC' button triggers focusout and cancels the search
+            var search = $(this);
 
-			var search = $(this);
+            if (!search.val().trim().length) {
 
-			if(e.keyCode == 27) {
+                window.location.hash = encodeURIComponent(currentPath);
+                search.hide();
+                search.parent().find('span').show();
 
-				search.trigger('focusout');
+            }
 
-			}
+        });
 
-		}).focusout(function(e){
 
-			// Cancel the search
+        // Clicking on folders
+        fileList.on('click', 'li.folders', function(e) {
+            e.preventDefault();
 
-			var search = $(this);
+            var nextDir = $(this).find('a.folders').attr('href');
 
-			if(!search.val().trim().length) {
+            if (filemanager.hasClass('searching')) {
 
-				window.location.hash = encodeURIComponent(currentPath);
-				search.hide();
-				search.parent().find('span').show();
+                // Building the breadcrumbs
 
-			}
+                breadcrumbsUrls = generateBreadcrumbs(nextDir);
 
-		});
+                filemanager.removeClass('searching');
+                filemanager.find('input[type=search]').val('').hide();
+                filemanager.find('span').show();
+            } else {
+                breadcrumbsUrls.push(nextDir);
+            }
 
+            window.location.hash = encodeURIComponent(nextDir);
+            currentPath = nextDir;
+        });
 
-		// Clicking on folders
 
-		fileList.on('click', 'li.folders', function(e){
-			e.preventDefault();
+        // Clicking on breadcrumbs
+        breadcrumbs.on('click', 'a', function(e) {
+            e.preventDefault();
 
-			var nextDir = $(this).find('a.folders').attr('href');
+            var index = breadcrumbs.find('a').index($(this)),
+                nextDir = breadcrumbsUrls[index];
 
-			if(filemanager.hasClass('searching')) {
+            breadcrumbsUrls.length = Number(index);
 
-				// Building the breadcrumbs
+            window.location.hash = encodeURIComponent(nextDir);
 
-				breadcrumbsUrls = generateBreadcrumbs(nextDir);
+        });
 
-				filemanager.removeClass('searching');
-				filemanager.find('input[type=search]').val('').hide();
-				filemanager.find('span').show();
-			}
-			else {
-				breadcrumbsUrls.push(nextDir);
-			}
 
-			window.location.hash = encodeURIComponent(nextDir);
-			currentPath = nextDir;
-		});
+        // Navigates to the given hash (path)
 
+        function goto(hash) {
 
-		// Clicking on breadcrumbs
+            hash = decodeURIComponent(hash).slice(1).split('=');
 
-		breadcrumbs.on('click', 'a', function(e){
-			e.preventDefault();
+            if (hash.length) {
+                var rendered = '';
 
-			var index = breadcrumbs.find('a').index($(this)),
-				nextDir = breadcrumbsUrls[index];
+                // if hash has search in it
 
-			breadcrumbsUrls.length = Number(index);
+                if (hash[0] === 'search') {
 
-			window.location.hash = encodeURIComponent(nextDir);
+                    filemanager.addClass('searching');
+                    rendered = searchData(response, hash[1].toLowerCase());
 
-		});
+                    if (rendered.length) {
+                        currentPath = hash[0];
+                        render(rendered);
+                    } else {
+                        render(rendered);
+                    }
 
+                }
 
-		// Navigates to the given hash (path)
+                // if hash is some path
+                else if (hash[0].trim().length) {
 
-		function goto(hash) {
+                    rendered = searchByPath(hash[0]);
 
-			hash = decodeURIComponent(hash).slice(1).split('=');
+                    if (rendered.length) {
 
-			if (hash.length) {
-				var rendered = '';
+                        currentPath = hash[0];
+                        breadcrumbsUrls = generateBreadcrumbs(hash[0]);
+                        render(rendered);
 
-				// if hash has search in it
+                    } else {
+                        currentPath = hash[0];
+                        breadcrumbsUrls = generateBreadcrumbs(hash[0]);
+                        render(rendered);
+                    }
 
-				if (hash[0] === 'search') {
+                }
 
-					filemanager.addClass('searching');
-					rendered = searchData(response, hash[1].toLowerCase());
+                // if there is no hash
+                else {
+                    currentPath = data.path;
+                    breadcrumbsUrls.push(data.path);
+                    render(searchByPath(data.path));
+                }
+            }
+        }
 
-					if (rendered.length) {
-						currentPath = hash[0];
-						render(rendered);
-					}
-					else {
-						render(rendered);
-					}
+        // Splits a file path and turns it into clickable breadcrumbs
 
-				}
+        function generateBreadcrumbs(nextDir) {
+            var path = nextDir.split('/').slice(0);
+            for (var i = 1; i < path.length; i++) {
+                path[i] = path[i - 1] + '/' + path[i];
+            }
+            return path;
+        }
 
-				// if hash is some path
 
-				else if (hash[0].trim().length) {
+        // Locates a file by path
 
-					rendered = searchByPath(hash[0]);
+        function searchByPath(dir) {
 
-					if (rendered.length) {
+            var path = dir.split('/'),
+                demo = response,
+                flag = 0;
 
-						currentPath = hash[0];
-						breadcrumbsUrls = generateBreadcrumbs(hash[0]);
-						render(rendered);
+            for (var i = 0; i < path.length; i++) {
+                for (var j = 0; j < demo.length; j++) {
+                    if (demo[j].name === path[i]) {
+                        flag = 1;
+                        demo = demo[j].items;
+                        break;
+                    }
+                }
+            }
 
-					}
-					else {
-						currentPath = hash[0];
-						breadcrumbsUrls = generateBreadcrumbs(hash[0]);
-						render(rendered);
-					}
+            demo = flag ? demo : [];
+            return demo;
+        }
 
-				}
 
-				// if there is no hash
+        // Recursively search through the file tree
 
-				else {
-					currentPath = data.path;
-					breadcrumbsUrls.push(data.path);
-					render(searchByPath(data.path));
-				}
-			}
-		}
+        function searchData(data, searchTerms) {
 
-		// Splits a file path and turns it into clickable breadcrumbs
+            data.forEach(function(d) {
+                if (d.type === 'folder') {
 
-		function generateBreadcrumbs(nextDir){
-			var path = nextDir.split('/').slice(0);
-			for(var i=1;i<path.length;i++){
-				path[i] = path[i-1]+ '/' +path[i];
-			}
-			return path;
-		}
+                    searchData(d.items, searchTerms);
 
+                    if (d.name.toLowerCase().match(searchTerms)) {
+                        folders.push(d);
+                    }
+                } else if (d.type === 'file') {
+                    if (d.name.toLowerCase().match(searchTerms)) {
+                        files.push(d);
+                    }
+                }
+            });
+            return {
+                folders: folders,
+                files: files
+            };
+        }
 
-		// Locates a file by path
 
-		function searchByPath(dir) {
-			//alert('DIR > ' + dir);
+        // Render the HTML for the file manager
+        function render(data) {
 
-			var path = dir.split('/'),
-				demo = response,
-				flag = 0;
+            var scannedFolders = [],
+                scannedFiles = [];
 
-			for(var i=0;i<path.length;i++){
-				for(var j=0;j<demo.length;j++){
-					if(demo[j].name === path[i]){
-						flag = 1;
-						demo = demo[j].items;
-						break;
-					}
-				}
-			}
+            if (Array.isArray(data)) {
 
-			demo = flag ? demo : [];
-			return demo;
-		}
+                data.forEach(function(d) {
 
+                    if (d.type === 'folder') {
+                        scannedFolders.push(d);
+                    } else if (d.type === 'file') {
+                        scannedFiles.push(d);
+                    }
 
-		// Recursively search through the file tree
+                });
 
-		function searchData(data, searchTerms) {
+            } else if (typeof data === 'object') {
 
-			data.forEach(function(d){
-				if(d.type === 'folder') {
+                scannedFolders = data.folders;
+                scannedFiles = data.files;
 
-					searchData(d.items,searchTerms);
+            }
 
-					if(d.name.toLowerCase().match(searchTerms)) {
-						folders.push(d);
-					}
-				}
-				else if(d.type === 'file') {
-					if(d.name.toLowerCase().match(searchTerms)) {
-						files.push(d);
-					}
-				}
-			});
-			return {folders: folders, files: files};
-		}
 
+            // Empty the old result and make the new one
 
-		// Render the HTML for the file manager
+            fileList.empty().hide();
 
-		function render(data) {
+            if (!scannedFolders.length && !scannedFiles.length) {
+                filemanager.find('.nothingfound').show();
+            } else {
+                filemanager.find('.nothingfound').hide();
+            }
 
-			var scannedFolders = [],
-				scannedFiles = [];
+            if (scannedFolders.length) {
 
-			if(Array.isArray(data)) {
+                scannedFolders.forEach(function(f) {
 
-				data.forEach(function (d) {
+                    var itemsLength = f.items.length,
+                        name = escapeHTML(f.name),
+                        icon = '<span class="icon folder"></span>';
 
-					if (d.type === 'folder') {
-						scannedFolders.push(d);
-					}
-					else if (d.type === 'file') {
-						scannedFiles.push(d);
-					}
+                    if (itemsLength) {
+                        icon = '<span class="icon folder full"></span>';
+                    }
 
-				});
+                    if (itemsLength == 1) {
+                        itemsLength += ' item';
+                    } else if (itemsLength > 1) {
+                        itemsLength += ' items';
+                    } else {
+                        itemsLength = 'Empty';
+                    }
 
-			}
-			else if(typeof data === 'object') {
+                    var folder = $('<li class="folders"><a href="' + f.path + '" title="' + f.path + '" class="folders">' + icon + '<span class="name">' + name + '</span> <span class="details">' + itemsLength + '</span></a></li>');
+                    folder.appendTo(fileList);
+                });
 
-				scannedFolders = data.folders;
-				scannedFiles = data.files;
+            }
 
-			}
+            if (scannedFiles.length) {
 
+                scannedFiles.forEach(function(f) {
 
-			// Empty the old result and make the new one
+                    var fileSize = bytesToSize(f.size),
+                        name = escapeHTML(f.name),
+                        fileType = name.split('.'),
+                        icon = '<span class="icon file"></span>';
 
-			fileList.empty().hide();
+                    fileType = fileType[fileType.length - 1];
 
-			if(!scannedFolders.length && !scannedFiles.length) {
-				filemanager.find('.nothingfound').show();
-			}
-			else {
-				filemanager.find('.nothingfound').hide();
-			}
+                    icon = '<span class="icon file f-' + fileType + '">.' + fileType + '</span>';
 
-			if(scannedFolders.length) {
+                    var file = $('<li class="files"><a href="' + f.path + '" title="' + f.path + '" class="files">' + icon + '<span class="name">' + name + '</span> <span class="details">' + fileSize + '</span></a></li>');
+                    file.appendTo(fileList);
+                });
 
-				scannedFolders.forEach(function(f) {
+            }
 
-					var itemsLength = f.items.length,
-						name = escapeHTML(f.name),
-						icon = '<span class="icon folder"></span>';
 
-					if(itemsLength) {
-						icon = '<span class="icon folder full"></span>';
-					}
+            // Generate the breadcrumbs
+            var url = '';
 
-					if(itemsLength == 1) {
-						itemsLength += ' item';
-					}
-					else if(itemsLength > 1) {
-						itemsLength += ' items';
-					}
-					else {
-						itemsLength = 'Empty';
-					}
+            if (filemanager.hasClass('searching')) {
 
-					var folder = $('<li class="folders"><a href="'+ f.path +'" title="'+ f.path +'" class="folders">'+icon+'<span class="name">' + name + '</span> <span class="details">' + itemsLength + '</span></a></li>');
-					folder.appendTo(fileList);
-				});
+                url = '<span>Search results: </span>';
+                fileList.removeClass('animated');
 
-			}
+            } else {
 
-			if(scannedFiles.length) {
+                fileList.addClass('animated');
 
-				scannedFiles.forEach(function(f) {
+                breadcrumbsUrls.forEach(function(u, i) {
 
-					var fileSize = bytesToSize(f.size),
-						name = escapeHTML(f.name),
-						fileType = name.split('.'),
-						icon = '<span class="icon file"></span>';
+                    if (u == 'files') {  // Change 'files' with 'Home'
+                        u = 'Home';
+                    }
 
-					fileType = fileType[fileType.length-1];
+                    var name = u.split('/');
 
-					icon = '<span class="icon file f-'+fileType+'">.'+fileType+'</span>';
+                    if (i !== breadcrumbsUrls.length - 1) {
+                        url += '<a href="' + u + '"><span class="folderName">' + name[name.length - 1] + '</span></a> <span class="arrow">→</span> ';
+                    } else {
+                        url += '<span class="folderName">' + name[name.length - 1] + '</span>';
+                    }
 
-					var file = $('<li class="files"><a href="'+ f.path+'" title="'+ f.path +'" class="files">'+icon+'<span class="name">'+ name +'</span> <span class="details">'+fileSize+'</span></a></li>');
-					file.appendTo(fileList);
-				});
+                });
 
-			}
+            }
 
+            breadcrumbs.text('').append(url);
 
-			// Generate the breadcrumbs
 
-			var url = '';
+            // Show the generated elements
 
-			if(filemanager.hasClass('searching')){
+            fileList.animate({
+                'display': 'inline-block'
+            });
 
-				url = '<span>Search results: </span>';
-				fileList.removeClass('animated');
+        }
 
-			}
-			else {
 
-				fileList.addClass('animated');
+        // This function escapes special html characters in names
 
-				breadcrumbsUrls.forEach(function (u, i) {
+        function escapeHTML(text) {
+            return text.replace(/\&/g, '&amp;').replace(/\</g, '&lt;').replace(/\>/g, '&gt;');
+        }
 
-					var name = u.split('/');
 
-					if (i !== breadcrumbsUrls.length - 1) {
-						url += '<a href="'+u+'"><span class="folderName">' + name[name.length-1] + '</span></a> <span class="arrow">→</span> ';
-					}
-					else {
-						url += '<span class="folderName">' + name[name.length-1] + '</span>';
-					}
+        // Convert file sizes from bytes to human readable units
 
-				});
+        function bytesToSize(bytes) {
+            var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            if (bytes == 0) return '0 Bytes';
+            var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+            return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+        }
 
-			}
-
-			breadcrumbs.text('').append(url);
-
-
-			// Show the generated elements
-
-			fileList.animate({'display':'inline-block'});
-
-		}
-
-
-		// This function escapes special html characters in names
-
-		function escapeHTML(text) {
-			return text.replace(/\&/g,'&amp;').replace(/\</g,'&lt;').replace(/\>/g,'&gt;');
-		}
-
-
-		// Convert file sizes from bytes to human readable units
-
-		function bytesToSize(bytes) {
-			var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-			if (bytes == 0) return '0 Bytes';
-			var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
-			return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
-		}
-
-	});
+    });
 });
